@@ -104,6 +104,8 @@ yarn add --dev husky lint-staged @commitlint/cli @commitlint/config-conventional
 在 `eslint.config.ts` 中注册 `eslint-plugin-simple-import-sort`，只启用 import 排序：
 
 ```ts
+import simpleImportSort from 'eslint-plugin-simple-import-sort'
+
 {
   name: 'app/import-sort',
   plugins: {
@@ -165,6 +167,7 @@ yarn add --dev husky lint-staged @commitlint/cli @commitlint/config-conventional
 执行 Husky 初始化：
 
 ```bat
+// 需要先完成第六步配置 package.json。
 yarn prepare
 ```
 
@@ -214,6 +217,8 @@ feat(router): add user routes
 
 ## 8. 配置 Husky hooks
 
+在文件.husky下创建下列文件
+
 `.husky/pre-commit`：
 
 ```sh
@@ -241,24 +246,75 @@ yarn build-only
 
 `tsconfig.app.json` 在 Vue 官方配置基础上启用：
 
+```ts
+  compileOptions: {
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+  }
+```
+
 - `noUncheckedIndexedAccess`
 - `exactOptionalPropertyTypes`
 - `noFallthroughCasesInSwitch`
 - `noImplicitOverride`
 - `noPropertyAccessFromIndexSignature`
 
-根目录包含：
+根目录包含（如果不存在就创建对应文件）：
 
 - `.editorconfig`：统一 UTF-8、LF、2 空格缩进和文件末尾换行
+
+```json
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+indent_size = 2
+trim_trailing_whitespace = true
+
+[*.md]
+trim_trailing_whitespace = false
+
+```
+
 - `.prettierrc.json`：不使用分号、单引号、100 字符换行
+
+```json
+{
+  "$schema": "https://json.schemastore.org/prettierrc",
+  "semi": false,
+  "singleQuote": true,
+  "printWidth": 100
+}
+```
+
 - `.prettierignore`：排除产物、依赖、覆盖率和锁文件
+
+```json
+dist
+dist-ssr
+node_modules
+coverage
+yarn.lock
+```
+
 - `.vscode/extensions.json`：推荐 Vue Official、ESLint、Prettier、EditorConfig
 - `.vscode/settings.json`：保存时格式化并执行 ESLint 修复
 - `.node-version`：声明 Node.js 24.12.0
 
+```json
+24.12.0
+```
+
 ## 10. 初始化 Pinia 和 typed mitt
 
 Pinia 在 `src/main.ts` 中注册：
+（跟着前面步骤做的话，已经初始化了）
 
 ```ts
 const app = createApp(App)
@@ -271,6 +327,8 @@ app.mount('#app')
 所有 mitt 事件集中声明在 `src/events/index.ts`，禁止散落字符串事件名：
 
 ```ts
+import mitt from 'mitt'
+
 export interface AppEvents extends Record<string | symbol, unknown> {
   'counter:incremented': { count: number }
   'notification:show': {
@@ -278,6 +336,25 @@ export interface AppEvents extends Record<string | symbol, unknown> {
     message: string
   }
 }
+export const appEmitter = mitt<AppEvents>()
+```
+
+创建`src/composables/useAppEvent.ts`
+
+```js
+import type { Handler } from 'mitt'
+import { onScopeDispose } from 'vue'
+
+import { appEmitter, type AppEvents } from '@/events'
+
+export function useAppEvent<EventName extends keyof AppEvents>(
+  eventName: EventName,
+  handler: Handler<AppEvents[EventName]>,
+) {
+  appEmitter.on(eventName, handler)
+  onScopeDispose(() => appEmitter.off(eventName, handler))
+}
+
 ```
 
 组件中优先通过 `useAppEvent` 订阅事件。它使用 `onScopeDispose` 自动解绑，避免组件销毁后残留监听器。
@@ -290,22 +367,25 @@ export interface AppEvents extends Record<string | symbol, unknown> {
 
 ## 11. 环境变量
 
-模板只提交 `.env.example`：
+模板只提交 `.env.example`：创建.env.example文件。
 
 ```dotenv
+// 创建.env.example
 VITE_APP_TITLE=Vue TS Template
 ```
 
-PowerShell 复制命令：
+修改`env.d.ts`内容，后续修改了.env.example文件也同步修改
 
-```powershell
-Copy-Item .env.example .env.local
-```
+```ts
+/// <reference types="vite/client" />
 
-Command Prompt 复制命令：
+interface ImportMetaEnv {
+  readonly VITE_APP_TITLE?: string
+}
 
-```bat
-copy .env.example .env.local
+interface ImportMeta {
+  readonly env: ImportMetaEnv
+}
 ```
 
 `.env.local` 已被 Git 忽略。新增变量时，需要同时更新 `.env.example` 和 `env.d.ts`，但不得把密码、Token 等秘密提交到仓库。
