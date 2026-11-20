@@ -1,5 +1,6 @@
 dist
 dist-ssr
+public/cesium
 node_modules
 coverage
 yarn.lock

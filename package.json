@@ -4,9 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "node scripts/sync-cesium-assets.mjs",
     "dev": "vite",
     "build": "run-p type-check \"build-only {@}\" --",
     "preview": "vite preview",
+    "prebuild-only": "node scripts/sync-cesium-assets.mjs",
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
     "lint": "run-s lint:oxlint lint:eslint",
@@ -23,6 +25,7 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "cesium": "1.144.0",
     "mitt": "^3.0.1",
     "pinia": "^4.0.2",
     "vue": "^3.5.40",

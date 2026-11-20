@@ -9,6 +9,11 @@ const router = createRouter({
       component: () => import('@/views/HomeView.vue'),
     },
     {
+      path: '/globe',
+      name: 'globe',
+      component: () => import('@/views/GlobeView.vue'),
+    },
+    {
       path: '/:pathMatch(.*)*',
       name: 'not-found',
       component: () => import('@/views/NotFoundView.vue'),
