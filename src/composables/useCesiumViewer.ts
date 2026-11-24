@@ -1,13 +1,7 @@
-import {
-  buildModuleUrl,
-  Cartesian3,
-  Color,
-  type ImageryLayer,
-  Math as CesiumMath,
-  TileMapServiceImageryProvider,
-  Viewer,
-} from 'cesium'
+import { Cartesian3, Color, Math as CesiumMath, Viewer } from 'cesium'
 import { onBeforeUnmount, onMounted, onUnmounted, type Ref, ref, shallowRef, watch } from 'vue'
+
+import { useMapControls } from '@/modules/map/useMapControls'
 
 const initialPosition = Cartesian3.fromDegrees(105, 26, 21_500_000)
 
@@ -16,11 +10,10 @@ export function useCesiumViewer(
   credits: Ref<HTMLElement | null>,
 ) {
   const status = ref<'loading' | 'ready' | 'error'>('loading')
-  const showImagery = ref(true)
   const showAtmosphere = ref(true)
   const camera = ref({ longitude: 0, latitude: 0, altitude: 0, heading: 0 })
   const viewer = shallowRef<Viewer | null>(null)
-  let imageryLayer: ImageryLayer | undefined
+  const mapControls = useMapControls(viewer)
   let disposed = false
 
   function updateCamera() {
@@ -49,12 +42,8 @@ export function useCesiumViewer(
     updateCamera()
   }
 
-  onMounted(async () => {
+  onMounted(() => {
     try {
-      const imagery = await TileMapServiceImageryProvider.fromUrl(
-        buildModuleUrl('Assets/Textures/NaturalEarthII'),
-        { credit: 'Natural Earth II' },
-      )
       if (!container.value || !credits.value || disposed) return
 
       const instance = new Viewer(container.value, {
@@ -75,12 +64,12 @@ export function useCesiumViewer(
       })
       viewer.value = instance
 
-      imageryLayer = instance.imageryLayers.addImageryProvider(imagery)
       instance.scene.backgroundColor = Color.fromCssColorString('#080d19')
       instance.scene.globe.baseColor = Color.fromCssColorString('#203656')
       instance.camera.percentageChanged = 0.005
       instance.camera.changed.addEventListener(updateCamera)
       instance.camera.moveEnd.addEventListener(updateCamera)
+      instance.scene.morphComplete.addEventListener(updateCamera)
       resetView()
 
       status.value = 'ready'
@@ -93,10 +82,9 @@ export function useCesiumViewer(
     }
   })
 
-  watch([showImagery, showAtmosphere], ([imageryVisible, atmosphereVisible]) => {
+  watch(showAtmosphere, (atmosphereVisible) => {
     const scene = viewer.value?.scene
-    if (!scene || !imageryLayer) return
-    imageryLayer.show = imageryVisible
+    if (!scene) return
     if (scene.skyAtmosphere) scene.skyAtmosphere.show = atmosphereVisible
     scene.globe.showGroundAtmosphere = atmosphereVisible
     scene.requestRender()
@@ -111,5 +99,5 @@ export function useCesiumViewer(
     viewer.value = null
   })
 
-  return { viewer, status, showImagery, showAtmosphere, camera, resetView, zoom }
+  return { viewer, status, showAtmosphere, camera, resetView, zoom, ...mapControls }
 }

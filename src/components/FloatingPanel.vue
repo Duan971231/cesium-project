@@ -3,7 +3,11 @@ import { onMounted, onUnmounted, ref, useId, useTemplateRef, watch } from 'vue'
 
 import AppIcon from '@/components/AppIcon.vue'
 
-const props = defineProps<{ title: string; side: 'left' | 'right'; icon: 'draw' | 'layers' }>()
+const props = defineProps<{
+  title: string
+  side: 'left' | 'right'
+  icon: 'draw' | 'layers' | 'cloud'
+}>()
 
 const panel = useTemplateRef('panel')
 const contentId = useId()
@@ -185,8 +189,11 @@ h2 {
 }
 
 .panel-content {
+  max-height: max(120px, calc(100dvh - 190px));
+  overflow-y: auto;
   border-top: 1px solid #52658942;
   padding: 8px;
+  scrollbar-width: thin;
 }
 
 @media (max-width: 580px) {

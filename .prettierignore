@@ -1,6 +1,7 @@
 dist
 dist-ssr
 public/cesium
+public/wind/gfs-10m.json
 node_modules
 coverage
 yarn.lock

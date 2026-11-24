@@ -8,15 +8,49 @@ import GlobeToolbar from '@/common/components/GlobeToolbar.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import FloatingPanel from '@/components/FloatingPanel.vue'
 import { useCesiumViewer } from '@/composables/useCesiumViewer'
+import { baseMaps, sceneModes } from '@/modules/map/useMapControls'
 import PlotPanel from '@/modules/plot/components/PlotPanel.vue'
 import { RegionScreenshot } from '@/modules/screenshot'
+import VolumetricCloudPanel from '@/modules/volumetric-clouds/components/VolumetricCloudPanel.vue'
+import { useVolumetricClouds } from '@/modules/volumetric-clouds/useVolumetricClouds'
+import { useWindLayer } from '@/modules/wind/useWindLayer'
 
 const screenshotOpen = ref(false)
 
-const { viewer, status, showImagery, showAtmosphere, camera, resetView, zoom } = useCesiumViewer(
-  useTemplateRef('globe'),
-  useTemplateRef('credits'),
-)
+const {
+  viewer,
+  status,
+  showImagery,
+  showAtmosphere,
+  camera,
+  resetView,
+  zoom,
+  baseMap,
+  showTerrain,
+  terrainLoading,
+  terrainError,
+  imageryError,
+  sceneMode,
+  morphing,
+  setSceneMode,
+} = useCesiumViewer(useTemplateRef('globe'), useTemplateRef('credits'))
+
+const {
+  showWind,
+  windLoading,
+  windError,
+  windTimeLabel,
+  windDensity,
+  windSpeed,
+  windEngine,
+  windBackend,
+  windWarning,
+  windDensityMax,
+  windFps,
+  windP95,
+} = useWindLayer(viewer, useTemplateRef('windCanvas'))
+
+const { showClouds, cloudOptions, cloudError } = useVolumetricClouds(viewer)
 
 function prepareScreenshotCanvas(canvas: HTMLCanvasElement) {
   const activeViewer = viewer.value
@@ -43,6 +77,7 @@ function prepareScreenshotCanvas(canvas: HTMLCanvasElement) {
 
     <section class="stage" aria-label="三维地球场景">
       <div ref="globe" class="globe-container"></div>
+      <canvas ref="windCanvas" class="wind-canvas" aria-hidden="true"></canvas>
       <div v-if="status !== 'ready'" class="scene-message" role="status">
         <template v-if="status === 'loading'">正在加载三维地球…</template>
         <template v-else>地球加载失败。请确认浏览器支持 WebGL 2，然后刷新页面。</template>
@@ -62,6 +97,21 @@ function prepareScreenshotCanvas(canvas: HTMLCanvasElement) {
 
       <div class="panel-area">
         <FloatingPanel title="场景图层" side="left" icon="layers">
+          <div class="mode-buttons" role="group" aria-label="地图视图模式">
+            <button
+              v-for="mode in sceneModes"
+              :key="mode"
+              class="mode-button"
+              type="button"
+              :disabled="status !== 'ready' || morphing"
+              :aria-pressed="sceneMode === mode"
+              :title="`切换到 ${mode}`"
+              :aria-label="`切换到 ${mode}`"
+              @click="setSceneMode(mode)"
+            >
+              {{ mode }}
+            </button>
+          </div>
           <button
             class="tool-row"
             type="button"
@@ -74,6 +124,34 @@ function prepareScreenshotCanvas(canvas: HTMLCanvasElement) {
             <span>地球底图</span>
             <span class="switch-track" aria-hidden="true"></span>
           </button>
+          <label class="basemap-picker">
+            <span>底图来源</span>
+            <select v-model="baseMap" :disabled="status !== 'ready'" aria-label="底图来源">
+              <option v-for="source in baseMaps" :key="source.id" :value="source.id">
+                {{ source.label }}
+              </option>
+            </select>
+          </label>
+          <p v-if="imageryError && showImagery" class="layer-message" role="status">
+            {{ imageryError }}
+          </p>
+          <button
+            class="tool-row"
+            type="button"
+            role="switch"
+            :aria-checked="showTerrain"
+            :aria-busy="terrainLoading"
+            :disabled="status !== 'ready'"
+            @click="showTerrain = !showTerrain"
+          >
+            <AppIcon name="terrain" />
+            <span>{{ terrainLoading ? '高程加载中…' : '地形高程' }}</span>
+            <span class="switch-track" aria-hidden="true"></span>
+          </button>
+          <p v-if="terrainError" class="layer-message" role="status">{{ terrainError }}</p>
+          <p v-else-if="showTerrain && sceneMode === '2D'" class="layer-hint">
+            高程已开启，切换到 2.5D 或 3D 可查看地形起伏。
+          </p>
           <button
             class="tool-row"
             type="button"
@@ -86,12 +164,83 @@ function prepareScreenshotCanvas(canvas: HTMLCanvasElement) {
             <span>大气效果</span>
             <span class="switch-track" aria-hidden="true"></span>
           </button>
-          <button class="tool-row" type="button" role="switch" aria-checked="false" disabled>
+          <button
+            class="tool-row"
+            type="button"
+            role="switch"
+            :aria-checked="showWind"
+            :aria-busy="windLoading"
+            :disabled="status !== 'ready'"
+            @click="showWind = !showWind"
+          >
+            <AppIcon name="wind" />
+            <span>{{ windLoading ? '风场加载中…' : '风场动画' }}</span>
+            <span class="switch-track" aria-hidden="true"></span>
+          </button>
+          <p v-if="windError" class="layer-message" role="status">{{ windError }}</p>
+          <div v-if="showWind" class="wind-controls">
+            <p v-if="windFps" aria-label="风场页面流畅度">
+              页面 {{ windFps }} fps · 帧间隔 P95 {{ windP95 }} ms
+            </p>
+            <label>
+              <span
+                >渲染模式 <output>{{ windBackend }}</output></span
+              >
+              <select v-model="windEngine" aria-label="风场渲染模式">
+                <option value="auto">自动（推荐）</option>
+                <option value="gpu">GPU 高性能</option>
+                <option value="canvas">Canvas 兼容</option>
+              </select>
+            </label>
+            <p v-if="windWarning" role="status">{{ windWarning }}</p>
+            <label>
+              <span
+                >粒子密度 <output>{{ windDensity }}</output></span
+              >
+              <input
+                v-model.number.lazy="windDensity"
+                type="range"
+                min="256"
+                :max="windDensityMax"
+                step="1"
+              />
+            </label>
+            <label>
+              <span
+                >动画速度 <output>{{ windSpeed.toFixed(1) }}×</output></span
+              >
+              <input v-model.number="windSpeed" type="range" min="0.2" max="3" step="0.1" />
+            </label>
+            <div class="wind-legend" aria-label="风速色标，单位米每秒">
+              <span>风速 m/s</span>
+              <div class="wind-colorbar"></div>
+              <div class="wind-ticks">
+                <span>0</span><span>10</span><span>20</span><span>30+</span>
+              </div>
+            </div>
+            <p>GFS · 近地面 10 m · 1° 网格</p>
+            <p v-if="windTimeLabel">{{ windTimeLabel }}</p>
+            <p>本地数据快照，非实时天气。<br />粒子沿风的去向流动，动画已加速。</p>
+          </div>
+          <button
+            class="tool-row"
+            type="button"
+            role="switch"
+            :aria-checked="showClouds"
+            :disabled="status !== 'ready'"
+            @click="showClouds = !showClouds"
+          >
             <AppIcon name="cloud" />
             <span>体积云</span>
-            <small>待接入</small>
+            <span class="switch-track" aria-hidden="true"></span>
           </button>
+          <p v-if="cloudError" class="layer-message" role="status">{{ cloudError }}</p>
         </FloatingPanel>
+        <VolumetricCloudPanel
+          v-if="showClouds"
+          v-model="cloudOptions"
+          :suspended="sceneMode !== '3D' || morphing"
+        />
       </div>
 
       <div v-if="status === 'ready'" class="camera-controls" role="group" aria-label="视角操作">
@@ -189,6 +338,54 @@ function prepareScreenshotCanvas(canvas: HTMLCanvasElement) {
   inset: 0;
 }
 
+.wind-canvas {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.wind-controls {
+  display: grid;
+  gap: 10px;
+  margin: 4px 7px 12px;
+  border-top: 1px solid #34445e;
+  padding-top: 10px;
+  color: #aabbd4;
+  font-size: 0.7rem;
+}
+
+.wind-controls label {
+  display: grid;
+  gap: 5px;
+}
+
+.wind-controls label > span,
+.wind-ticks {
+  display: flex;
+  justify-content: space-between;
+}
+
+.wind-controls input {
+  width: 100%;
+  margin: 0;
+  accent-color: #81b9ff;
+}
+
+.wind-controls p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wind-colorbar {
+  height: 6px;
+  margin: 5px 0;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #8bd9ff, #5ce5e0, #91ed9b, #f5eb83, #ffb767, #ff7784);
+}
+
 .panel-area {
   z-index: 2;
   pointer-events: none;
@@ -196,6 +393,7 @@ function prepareScreenshotCanvas(canvas: HTMLCanvasElement) {
 
 .scene-message {
   position: absolute;
+  z-index: 2;
   inset: 50% auto auto 50%;
   width: max-content;
   max-width: calc(100% - 30px);
@@ -227,8 +425,7 @@ function prepareScreenshotCanvas(canvas: HTMLCanvasElement) {
   background: #253654;
 }
 
-.tool-row:disabled,
-.tool-row small {
+.tool-row:disabled {
   color: #a2b0c7;
 }
 
@@ -241,8 +438,84 @@ function prepareScreenshotCanvas(canvas: HTMLCanvasElement) {
   color: #8b9ebc;
 }
 
-.tool-row small {
+.basemap-picker {
+  display: grid;
+  gap: 7px;
+  padding: 6px 7px 10px;
+  color: #aabbd4;
   font-size: 0.75rem;
+}
+
+.basemap-picker select,
+.wind-controls select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #34445e;
+  border-radius: 6px;
+  padding: 7px;
+  background: #17243b;
+  color: #dbe5f6;
+  font: inherit;
+}
+
+.layer-message,
+.layer-hint {
+  margin: 2px 7px 8px;
+  color: #ffc38c;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.layer-hint {
+  color: #aabbd4;
+}
+
+.mode-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 6px;
+  border: 1px solid #334364;
+  border-radius: 6px;
+  background: #17243b;
+}
+
+.mode-button {
+  position: relative;
+  min-height: 34px;
+  padding: 0;
+  color: #b8d4ff;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.mode-button + .mode-button {
+  border-left: 1px solid #334364;
+}
+
+.mode-button:first-child {
+  border-radius: 5px 0 0 5px;
+}
+
+.mode-button:last-child {
+  border-radius: 0 5px 5px 0;
+}
+
+.mode-button:focus-visible {
+  z-index: 1;
+  outline-offset: -3px;
+}
+
+.mode-button[aria-pressed='true'] {
+  background: #365b8c;
+  color: #fff;
+}
+
+.mode-button[aria-pressed='false']:enabled:hover {
+  background: #253654;
+}
+
+.mode-button:disabled {
+  opacity: 0.5;
 }
 
 .switch-track {
@@ -272,9 +545,11 @@ function prepareScreenshotCanvas(canvas: HTMLCanvasElement) {
 
 .camera-controls {
   position: absolute;
+  z-index: 2;
   right: 22px;
   bottom: 18px;
   display: grid;
+  justify-items: end;
   gap: 9px;
 }
 
@@ -319,6 +594,7 @@ function prepareScreenshotCanvas(canvas: HTMLCanvasElement) {
 
 .scene-credits {
   position: absolute;
+  z-index: 2;
   bottom: 8px;
   left: 12px;
   max-width: calc(100% - 80px);
