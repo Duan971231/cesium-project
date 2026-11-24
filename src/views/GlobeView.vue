@@ -1,23 +1,30 @@
 <script setup lang="ts">
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 
-import { useTemplateRef } from 'vue'
+import { ref, useTemplateRef } from 'vue'
 import { RouterLink } from 'vue-router'
 
+import GlobeToolbar from '@/common/components/GlobeToolbar.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import FloatingPanel from '@/components/FloatingPanel.vue'
 import { useCesiumViewer } from '@/composables/useCesiumViewer'
+import PlotPanel from '@/modules/plot/components/PlotPanel.vue'
+import { RegionScreenshot } from '@/modules/screenshot'
 
-const { status, showImagery, showAtmosphere, camera, resetView, zoom } = useCesiumViewer(
+const screenshotOpen = ref(false)
+
+const { viewer, status, showImagery, showAtmosphere, camera, resetView, zoom } = useCesiumViewer(
   useTemplateRef('globe'),
   useTemplateRef('credits'),
 )
 
-const drawingTools = [
-  { icon: 'point', label: '绘制点' },
-  { icon: 'line', label: '绘制线' },
-  { icon: 'polygon', label: '绘制面' },
-] as const
+function prepareScreenshotCanvas(canvas: HTMLCanvasElement) {
+  const activeViewer = viewer.value
+  if (activeViewer && !activeViewer.isDestroyed() && canvas === activeViewer.scene.canvas) {
+    activeViewer.scene.requestRender()
+    activeViewer.render()
+  }
+}
 </script>
 
 <template>
@@ -41,22 +48,20 @@ const drawingTools = [
         <template v-else>地球加载失败。请确认浏览器支持 WebGL 2，然后刷新页面。</template>
       </div>
 
-      <div class="panel-area">
-        <FloatingPanel title="绘制工具" side="left" icon="draw">
-          <button
-            v-for="tool in drawingTools"
-            :key="tool.icon"
-            class="tool-row"
-            type="button"
-            disabled
-          >
-            <AppIcon :name="tool.icon" />
-            <span>{{ tool.label }}</span>
-            <small>待接入</small>
-          </button>
-        </FloatingPanel>
+      <GlobeToolbar @screenshot="screenshotOpen = true">
+        <template #plot>
+          <PlotPanel :viewer="viewer" />
+        </template>
+      </GlobeToolbar>
 
-        <FloatingPanel title="场景图层" side="right" icon="layers">
+      <RegionScreenshot
+        v-if="screenshotOpen"
+        :prepare-canvas="prepareScreenshotCanvas"
+        @close="screenshotOpen = false"
+      />
+
+      <div class="panel-area">
+        <FloatingPanel title="场景图层" side="left" icon="layers">
           <button
             class="tool-row"
             type="button"

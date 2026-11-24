@@ -7,7 +7,7 @@ import {
   TileMapServiceImageryProvider,
   Viewer,
 } from 'cesium'
-import { onBeforeUnmount, onMounted, type Ref, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, onUnmounted, type Ref, ref, shallowRef, watch } from 'vue'
 
 const initialPosition = Cartesian3.fromDegrees(105, 26, 21_500_000)
 
@@ -19,31 +19,33 @@ export function useCesiumViewer(
   const showImagery = ref(true)
   const showAtmosphere = ref(true)
   const camera = ref({ longitude: 0, latitude: 0, altitude: 0, heading: 0 })
-  let viewer: Viewer | undefined
+  const viewer = shallowRef<Viewer | null>(null)
   let imageryLayer: ImageryLayer | undefined
   let disposed = false
 
   function updateCamera() {
-    if (!viewer) return
-    const position = viewer.camera.positionCartographic
+    const activeCamera = viewer.value?.camera
+    if (!activeCamera) return
+    const position = activeCamera.positionCartographic
     camera.value = {
       longitude: CesiumMath.toDegrees(position.longitude),
       latitude: CesiumMath.toDegrees(position.latitude),
       altitude: position.height / 1000,
-      heading: CesiumMath.toDegrees(viewer.camera.heading),
+      heading: CesiumMath.toDegrees(activeCamera.heading),
     }
   }
 
   function resetView() {
-    viewer?.camera.setView({ destination: initialPosition })
+    viewer.value?.camera.setView({ destination: initialPosition })
     updateCamera()
   }
 
   function zoom(direction: 'in' | 'out') {
-    if (!viewer) return
-    const amount = Math.max(0, viewer.camera.positionCartographic.height * 0.22)
-    if (direction === 'in') viewer.camera.zoomIn(amount)
-    else viewer.camera.zoomOut(amount)
+    const activeCamera = viewer.value?.camera
+    if (!activeCamera) return
+    const amount = Math.max(0, activeCamera.positionCartographic.height * 0.22)
+    if (direction === 'in') activeCamera.zoomIn(amount)
+    else activeCamera.zoomOut(amount)
     updateCamera()
   }
 
@@ -55,7 +57,7 @@ export function useCesiumViewer(
       )
       if (!container.value || !credits.value || disposed) return
 
-      viewer = new Viewer(container.value, {
+      const instance = new Viewer(container.value, {
         animation: false,
         baseLayer: false,
         baseLayerPicker: false,
@@ -71,38 +73,43 @@ export function useCesiumViewer(
         requestRenderMode: true,
         maximumRenderTimeChange: Infinity,
       })
+      viewer.value = instance
 
-      imageryLayer = viewer.imageryLayers.addImageryProvider(imagery)
-      viewer.scene.backgroundColor = Color.fromCssColorString('#080d19')
-      viewer.scene.globe.baseColor = Color.fromCssColorString('#203656')
-      viewer.camera.percentageChanged = 0.005
-      viewer.camera.changed.addEventListener(updateCamera)
-      viewer.camera.moveEnd.addEventListener(updateCamera)
+      imageryLayer = instance.imageryLayers.addImageryProvider(imagery)
+      instance.scene.backgroundColor = Color.fromCssColorString('#080d19')
+      instance.scene.globe.baseColor = Color.fromCssColorString('#203656')
+      instance.camera.percentageChanged = 0.005
+      instance.camera.changed.addEventListener(updateCamera)
+      instance.camera.moveEnd.addEventListener(updateCamera)
       resetView()
 
       status.value = 'ready'
     } catch (error) {
       if (disposed) return
-      viewer?.destroy()
-      viewer = undefined
+      viewer.value?.destroy()
+      viewer.value = null
       status.value = 'error'
       console.error('Cesium 初始化失败', error)
     }
   })
 
   watch([showImagery, showAtmosphere], ([imageryVisible, atmosphereVisible]) => {
-    if (!viewer || !imageryLayer) return
+    const scene = viewer.value?.scene
+    if (!scene || !imageryLayer) return
     imageryLayer.show = imageryVisible
-    if (viewer.scene.skyAtmosphere) viewer.scene.skyAtmosphere.show = atmosphereVisible
-    viewer.scene.globe.showGroundAtmosphere = atmosphereVisible
-    viewer.scene.requestRender()
+    if (scene.skyAtmosphere) scene.skyAtmosphere.show = atmosphereVisible
+    scene.globe.showGroundAtmosphere = atmosphereVisible
+    scene.requestRender()
   })
 
   onBeforeUnmount(() => {
     disposed = true
-    viewer?.destroy()
-    viewer = undefined
   })
 
-  return { status, showImagery, showAtmosphere, camera, resetView, zoom }
+  onUnmounted(() => {
+    viewer.value?.destroy()
+    viewer.value = null
+  })
+
+  return { viewer, status, showImagery, showAtmosphere, camera, resetView, zoom }
 }

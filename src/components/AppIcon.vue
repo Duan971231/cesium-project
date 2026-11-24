@@ -16,6 +16,10 @@ const paths = {
   plus: 'M12 5v14M5 12h14',
   minus: 'M5 12h14',
   compass: 'm12 3 5 15-5-3-5 3Z',
+  tools: 'M4 6h16M4 12h16M4 18h16M9 4v4m6 2v4m-5 2v4',
+  trash: 'M4 7h16m-14 0 1 13h10l1-13M9 7V4h6v3m-5 4v5m4-5v5',
+  camera:
+    'M4 7h4l2-2h4l2 2h4a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Zm11 6a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z',
 } as const
 
 defineProps<{ name: keyof typeof paths }>()
